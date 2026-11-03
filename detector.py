@@ -43,7 +43,7 @@ def log(*a):
 
 def stream_size(url):
     out = subprocess.check_output(
-        ["ffprobe", "-v", "error", "-rtsp_transport", "tcp", "-select_streams", "v:0",
+        ["ffprobe", "-v", "error", "-rtsp_transport", "tcp", "-timeout", "15000000", "-select_streams", "v:0",
          "-show_entries", "stream=width,height", "-of", "csv=p=0", url], timeout=30)
     w, h = out.decode().strip().split(",")[:2]
     return int(w), int(h)
@@ -60,7 +60,7 @@ def frames(url):
             continue
         n = w * h * 3
         p = subprocess.Popen(
-            ["ffmpeg", "-nostdin", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", url,
+            ["ffmpeg", "-nostdin", "-loglevel", "error", "-rtsp_transport", "tcp", "-timeout", "15000000", "-i", url,
              "-vf", f"fps={FPS}", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"],
             stdout=subprocess.PIPE, bufsize=n)
         latest = queue.Queue(maxsize=1)
@@ -78,11 +78,13 @@ def frames(url):
         threading.Thread(target=drain, daemon=True).start()
         log(f"stream {w}x{h} @ {FPS} fps")
         try:
-            while (frame := latest.get()) is not None:
+            while (frame := latest.get(timeout=60)) is not None:
                 yield frame
+            log("stream ended, reconnecting")
+        except queue.Empty:
+            log("no frame for 60 s, reconnecting")
         finally:
             p.kill()
-        log("stream ended, reconnecting")
         time.sleep(5)
 
 

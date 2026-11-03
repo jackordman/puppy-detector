@@ -7,7 +7,7 @@ Wants=network-online.target
 User=jack
 EnvironmentFile=/opt/puppy-detector/config.env
 ExecStartPre=/bin/mkdir -p ${OUT_DIR}/recordings
-ExecStart=/usr/bin/ffmpeg -nostdin -loglevel warning -rtsp_transport tcp -i ${RTSP_URL} -an -c:v copy -f segment -segment_time 600 -segment_atclocktime 1 -reset_timestamps 1 -strftime 1 ${OUT_DIR}/recordings/%%Y-%%m-%%d_%%H%%M%%S.mkv
+ExecStart=/usr/bin/ffmpeg -nostdin -loglevel warning -rtsp_transport tcp -timeout 15000000 -i ${RTSP_URL} -an -c:v copy -f segment -segment_time 600 -segment_atclocktime 1 -reset_timestamps 1 -strftime 1 ${OUT_DIR}/recordings/%%Y-%%m-%%d_%%H%%M%%S.mkv
 Restart=always
 RestartSec=5
 

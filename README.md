@@ -57,6 +57,10 @@ downloaded weights.
     ssh homepi systemctl status puppy-detector puppy-recorder puppy-prune.timer
     ssh homepi 'cd /opt/puppy-detector && venv/bin/python detector.py probe'   # one frame, timing
 
+The camera's TLS stream stalls silently every few hours (connection stays open, no data).
+Both ffmpeg calls carry `-timeout 15000000` (15 s socket timeout) so they exit and get
+restarted, and the detector reconnects on its own after 60 s without a frame.
+
 Self-checks: `python3 detector.py selftest` (needs numpy, e.g. `uv run --with numpy ...`),
 `python3 train.py selftest`, `python3 find_events.py selftest`, `python3 web.py selftest`.
 
