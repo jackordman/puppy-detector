@@ -41,7 +41,7 @@ input{font:inherit;padding:10px;border-radius:8px;border:1px solid #444;backgrou
 <h2>Events</h2><div id=events></div>
 <script>
 const $=id=>document.getElementById(id);
-const api=(p,b)=>fetch(p,b?{method:'POST',body:JSON.stringify(b)}:{}).then(r=>r.json());
+const api=(p,b)=>fetch(p,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{}).then(r=>r.json());
 let lastSince='1 hours ago';
 async function find(since,until){ if(!since)return; lastSince=since; $('status').textContent='Searching...'; $('cands').innerHTML='';
   const c=await api('/api/find?since='+encodeURIComponent(since)+(until?'&until='+encodeURIComponent(until):''));
@@ -88,6 +88,8 @@ def api_confirm(b):
 
 
 def api_type(b):
+    if b["type"] not in ("poop", "pee"):
+        raise ValueError("type must be poop or pee")
     events.update(b["id"], type=b["type"], confirmed=True)
     return {"ok": True}
 
@@ -139,6 +141,8 @@ class H(BaseHTTPRequestHandler):
             self.send(500, {"error": str(e)})
 
     def do_POST(self):
+        if self.headers.get("Content-Type") != "application/json":  # blocks cross-site form posts
+            return self.send(403, {"error": "json only"})
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0)) or b"{}"))
         fn = {"/api/confirm": api_confirm, "/api/type": api_type, "/api/dismiss": api_dismiss, "/api/delete": api_delete}.get(self.path)
         if not fn:
@@ -165,7 +169,8 @@ def selftest():
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         base = f"http://127.0.0.1:{srv.server_port}"
         def call(p, b=None):
-            req = urllib.request.Request(base + p, json.dumps(b).encode() if b else None, method="POST" if b else "GET")
+            req = urllib.request.Request(base + p, json.dumps(b).encode() if b else None, method="POST" if b else "GET",
+                                         headers={"Content-Type": "application/json"} if b else {})
             try:
                 return json.loads(urllib.request.urlopen(req).read())
             except urllib.error.HTTPError as e:
@@ -181,8 +186,15 @@ def selftest():
         events.append(id="y", time="2026-11-03T13:00:00", source="classifier")
         post("/api/dismiss", {"id": "y"})
         assert [e["id"] for e in get("/api/events")] == ["x"] and events.load()[1]["dismissed"]
+        assert "error" in post("/api/type", {"id": "x", "type": "<img onerror=1>"})
         post("/api/delete", {"id": "x"})
         assert get("/api/events") == []
+        plain = urllib.request.Request(base + "/api/delete", b"{}", method="POST")
+        try:
+            urllib.request.urlopen(plain)
+            raise AssertionError("plain POST accepted")
+        except urllib.error.HTTPError as e:
+            assert e.code == 403
         assert "error" in post("/api/confirm", {"id": "2026-01-01_000000"})
         assert get("/files/../etc/passwd") == {"error": "not found"}
         srv.shutdown()
