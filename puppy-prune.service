@@ -1,0 +1,8 @@
+[Unit]
+Description=Trim puppy cam recordings to MAX_REC_GB
+
+[Service]
+Type=oneshot
+User=jack
+EnvironmentFile=/opt/puppy-detector/config.env
+ExecStart=/opt/puppy-detector/prune.sh

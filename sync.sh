@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Deploy to the Pi and (re)start the service. Usage: ./sync.sh [host]
+# Deploy to the Pi and (re)start the services. Usage: ./sync.sh [host]
+# Restarting the recorder drops a few seconds of recording at the segment boundary.
 set -euo pipefail
 cd "$(dirname "$0")"
 host=${1:-homepi}
-rsync -az detector.py notify.py train.py puppy-detector.service "$host:/opt/puppy-detector/"
+rsync -az *.py *.sh puppy-*.service puppy-*.timer "$host:/opt/puppy-detector/"
 [ -f config.local ] && rsync -az config.local "$host:/opt/puppy-detector/config.env"
-ssh "$host" 'sudo install -m644 /opt/puppy-detector/puppy-detector.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now puppy-detector && sudo systemctl restart puppy-detector && sleep 3 && systemctl --no-pager status puppy-detector | head -12'
+ssh "$host" 'cd /opt/puppy-detector && sudo install -m644 puppy-*.service puppy-*.timer /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now puppy-detector puppy-recorder puppy-prune.timer && sudo systemctl restart puppy-detector puppy-recorder && sleep 4 && systemctl --no-pager --lines=5 status puppy-detector puppy-recorder puppy-prune.timer'

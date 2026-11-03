@@ -62,12 +62,14 @@ def frames(url):
              "-vf", f"fps={FPS}", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"],
             stdout=subprocess.PIPE, bufsize=n)
         log(f"stream {w}x{h} @ {FPS} fps")
-        while True:
-            buf = p.stdout.read(n)
-            if len(buf) < n:
-                break
-            yield np.frombuffer(buf, np.uint8).reshape(h, w, 3)
-        p.kill()
+        try:
+            while True:
+                buf = p.stdout.read(n)
+                if len(buf) < n:
+                    break
+                yield np.frombuffer(buf, np.uint8).reshape(h, w, 3)
+        finally:
+            p.kill()
         log("stream ended, reconnecting")
         time.sleep(5)
 
@@ -75,15 +77,15 @@ def frames(url):
 # ---------- pure logic ----------
 
 def pick_dog(boxes, cls, conf):
-    """Largest dog box as (x1, y1, x2, y2) ints, or None."""
-    best, area = None, 0
+    """Largest dog box as ((x1, y1, x2, y2), score), or (None, 0)."""
+    best, score, area = None, 0.0, 0
     for b, c, s in zip(boxes, cls, conf):
         if int(c) != DOG or s < CONF:
             continue
         x1, y1, x2, y2 = (int(v) for v in b)
         if (x2 - x1) * (y2 - y1) > area:
-            best, area = (x1, y1, x2, y2), (x2 - x1) * (y2 - y1)
-    return best
+            best, score, area = (x1, y1, x2, y2), float(s), (x2 - x1) * (y2 - y1)
+    return best, score
 
 
 def crop(frame, box, margin=0.15):
@@ -141,13 +143,16 @@ def run():
     for frame in frames(RTSP_URL):
         now = time.time()
         r = det(frame, imgsz=IMGSZ, classes=[DOG], conf=CONF, verbose=False)[0]
-        box = pick_dog(r.boxes.xyxy.tolist(), r.boxes.cls.tolist(), r.boxes.conf.tolist())
+        box, score = pick_dog(r.boxes.xyxy.tolist(), r.boxes.cls.tolist(), r.boxes.conf.tolist())
         if box is None:
             streak.update(False, now)
             continue
         c = crop(frame, box)
         ts = datetime.now()
         day, name = ts.strftime("%Y-%m-%d"), ts.strftime("%H%M%S_%f")[:-3] + ".jpg"
+        (OUT / "detections").mkdir(parents=True, exist_ok=True)
+        with open(OUT / "detections" / f"{day}.csv", "a", newline="") as f:
+            csv.writer(f).writerow([ts.isoformat(timespec="milliseconds"), *box, round(score, 3)])
         if now - last_save >= 1.0:
             last_save = now
             for sub, img in (("crops", c), ("frames", frame)):
@@ -176,7 +181,9 @@ def probe():
     import cv2
     from ultralytics import YOLO
     det = YOLO("yolov8n.pt")
-    frame = next(frames(RTSP_URL))
+    gen = frames(RTSP_URL)
+    frame = next(gen)
+    gen.close()
     t = time.time()
     r = det(frame, imgsz=IMGSZ, classes=[DOG], conf=CONF, verbose=False)[0]
     log(f"frame {frame.shape[1]}x{frame.shape[0]}, {len(r.boxes)} dog(s), {1000*(time.time()-t):.0f} ms")
@@ -186,8 +193,8 @@ def probe():
 
 def selftest():
     f = np.zeros((100, 200, 3), np.uint8)
-    assert pick_dog([[0, 0, 10, 10], [0, 0, 50, 50], [0, 0, 90, 90]], [DOG, DOG, 0], [0.9, 0.9, 0.9]) == (0, 0, 50, 50)
-    assert pick_dog([[0, 0, 50, 50]], [DOG], [CONF - 0.1]) is None
+    assert pick_dog([[0, 0, 10, 10], [0, 0, 50, 50], [0, 0, 90, 90]], [DOG, DOG, 0], [0.9, 0.8, 0.9]) == ((0, 0, 50, 50), 0.8)
+    assert pick_dog([[0, 0, 50, 50]], [DOG], [CONF - 0.1]) == (None, 0.0)
     assert crop(f, (190, 90, 200, 100)).shape == (11, 11, 3)
     s = Streak(3, 100)
     assert [s.update(x, 0) for x in (1, 1, 0, 1, 1, 1)] == [False] * 5 + [True]

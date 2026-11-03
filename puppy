@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Run find_events.py on the Pi from the Mac. Examples:
+#   ./puppy find --since "3 hours ago"
+#   ./puppy clip 2026-11-03_143012
+exec ssh homepi "cd /opt/puppy-detector && venv/bin/python find_events.py $(printf '%q ' "$@")"
