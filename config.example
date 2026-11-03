@@ -1,0 +1,13 @@
+# Copy to config.local (gitignored). sync.sh ships it to the Pi as /opt/puppy-detector/config.env.
+RTSP_URL="rtsps://USER:PASS@192.168.2.140:322/stream0"
+OUT_DIR=/srv/nas/share/puppycam
+FPS=2
+IMGSZ=416
+CONF=0.4
+MAX_GB=20
+# phase 2/3, harmless until squat.pt exists / topic set
+CLASSIFIER=/opt/puppy-detector/squat.pt
+SQUAT_CONF=0.6
+CONSECUTIVE=3
+EVENT_COOLDOWN=120
+NTFY_TOPIC=

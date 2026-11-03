@@ -1,0 +1,4 @@
+config.local
+.DS_Store
+__pycache__/
+*.pt

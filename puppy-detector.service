@@ -1,0 +1,16 @@
+[Unit]
+Description=Puppy detector (dog crops from the Wyze cam)
+After=network-online.target srv-nas.mount
+Wants=network-online.target
+
+[Service]
+User=jack
+WorkingDirectory=/opt/puppy-detector
+EnvironmentFile=/opt/puppy-detector/config.env
+ExecStart=/opt/puppy-detector/venv/bin/python /opt/puppy-detector/detector.py
+Restart=always
+RestartSec=10
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
