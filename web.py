@@ -29,7 +29,7 @@ button{font:inherit;padding:14px 18px;margin:4px 4px 4px 0;border:0;border-radiu
 button.primary{background:#2a7;color:#000;font-weight:600}button.danger{background:#a33}button.small{padding:8px 12px;font-size:15px}
 input{font:inherit;padding:10px;border-radius:8px;border:1px solid #444;background:#222;color:#eee;width:100%;box-sizing:border-box;margin:4px 0}
 .card{background:#1c1c1c;border-radius:12px;padding:10px;margin:10px 0}.card img{width:100%;border-radius:8px;display:block}
-.row{display:flex;gap:10px;align-items:center}.row img{width:96px;height:72px;object-fit:cover;border-radius:8px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.row input{flex:1;min-width:150px;width:auto}.row img{width:96px;height:72px;object-fit:cover;border-radius:8px}
 .muted{color:#888;font-size:15px}#status{min-height:1.4em;color:#fc6}
 </style></head><body>
 <h2>Found one</h2>
