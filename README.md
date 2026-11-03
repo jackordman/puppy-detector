@@ -7,6 +7,8 @@ an event row and snapshot.
 
 **Found a mess? Open <http://homepi.local:8080> on the phone** (also over Tailscale at
 <http://100.127.34.3:8080>). Pick a window, tap the candidate that is it, answer poop or pee.
+Share > Add to Home Screen in Safari gives it an icon and a full-screen app look. Push to the
+phone stays with the ntfy app (web push would need HTTPS, a service worker and a push server).
 
 Everything lands on the NAS share at `smb://homepi.local/nas` under `puppycam/`:
 
