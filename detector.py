@@ -10,10 +10,12 @@ Config comes from the environment (systemd EnvironmentFile), see config.example.
 """
 import csv
 import os
+import queue
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -48,7 +50,7 @@ def stream_size(url):
 
 
 def frames(url):
-    """Yield BGR frames at FPS forever, restarting ffmpeg when the stream drops."""
+    """Yield the newest BGR frame, dropping any the detector was too slow for, reconnecting when the stream drops."""
     while True:
         try:
             w, h = stream_size(url)
@@ -61,13 +63,23 @@ def frames(url):
             ["ffmpeg", "-nostdin", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", url,
              "-vf", f"fps={FPS}", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"],
             stdout=subprocess.PIPE, bufsize=n)
+        latest = queue.Queue(maxsize=1)
+
+        def drain():
+            while len(buf := p.stdout.read(n)) == n:
+                if latest.full():
+                    try:
+                        latest.get_nowait()
+                    except queue.Empty:
+                        pass
+                latest.put(np.frombuffer(buf, np.uint8).reshape(h, w, 3))
+            latest.put(None)
+
+        threading.Thread(target=drain, daemon=True).start()
         log(f"stream {w}x{h} @ {FPS} fps")
         try:
-            while True:
-                buf = p.stdout.read(n)
-                if len(buf) < n:
-                    break
-                yield np.frombuffer(buf, np.uint8).reshape(h, w, 3)
+            while (frame := latest.get()) is not None:
+                yield frame
         finally:
             p.kill()
         log("stream ended, reconnecting")
@@ -133,6 +145,7 @@ class Streak:
 def run():
     import cv2
     from ultralytics import YOLO
+    import events
     import notify
 
     det = YOLO("yolov8n.pt")
@@ -166,8 +179,8 @@ def run():
                 snap = OUT / "events" / f"{ts:%Y-%m-%d_%H%M%S}.jpg"
                 snap.parent.mkdir(parents=True, exist_ok=True)
                 cv2.imwrite(str(snap), frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                with open(OUT / "events.csv", "a", newline="") as f:
-                    csv.writer(f).writerow([ts.isoformat(timespec="seconds"), str(snap)])
+                events.append(id=f"{ts:%Y-%m-%d_%H%M%S}", time=ts.isoformat(timespec="seconds"), source="classifier",
+                              thumb=str(snap.relative_to(OUT)))
                 log("EVENT", snap)
                 notify.push(f"Puppy squat {ts:%H:%M:%S}", snap)
         if now - last_prune > 3600:

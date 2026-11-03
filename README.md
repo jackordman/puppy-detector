@@ -1,8 +1,12 @@
 # puppy-detector
 
 Watches the Wyze Cam v3 from the Raspberry Pi `homepi`, saves a crop whenever a dog is in
-frame, and (once trained) pushes a notification when the dog squats to poop or lifts a leg.
-No sound, no siren, ever. Output is a push to Jack's phone plus a log row and snapshot.
+frame, records a two week ring buffer, and (once trained) pushes a notification when the dog
+squats to poop or lifts a leg. No sound, no siren, ever. Output is a push to Jack's phone plus
+an event row and snapshot.
+
+**Found a mess? Open <http://homepi.local:8080> on the phone** (also over Tailscale at
+<http://100.127.34.3:8080>). Pick a window, tap the candidate that is it, answer poop or pee.
 
 Everything lands on the NAS share at `smb://homepi.local/nas` under `puppycam/`:
 
@@ -14,8 +18,8 @@ Everything lands on the NAS share at `smb://homepi.local/nas` under `puppycam/`:
     puppycam/positives/<id>.mp4 + <id>/*.jpg     clips and their dog crops from `puppy clip` (training input)
     puppycam/label/squat/                        phase 2: positives you sorted
     puppycam/label/other/                        phase 2: optional hand-picked negatives
-    puppycam/events/                             phase 3: snapshot per event
-    puppycam/events.csv                          phase 3: time, snapshot path
+    puppycam/events/<id>.jpg                     thumbnail per event
+    puppycam/events.jsonl                        one event per line: id, time, type, confirmed, source, thumb, clip
 
 `crops/` and `frames/` are pruned oldest-day-first above `MAX_GB` (20 GB), `recordings/`
 oldest-segment-first above `MAX_REC_GB` (250 GB, about two weeks). Everything else is kept.
@@ -28,10 +32,15 @@ oldest-segment-first above `MAX_REC_GB` (250 GB, about two weeks). Everything el
 - `puppy-recorder.service` ffmpeg copying the h264 stream into 10 minute `.mkv` segments, no
   re-encode, no audio. Its own unit so it and the detector cannot take each other down.
 - `puppy-prune.timer` runs `prune.sh` every 10 minutes to hold the recordings under the cap.
-- `find_events.py` and the `puppy` wrapper: find the accident after the fact, cut the clip.
+- `web.py` the phone page on port 8080 (stdlib http.server, one inline HTML page). Calls the
+  finder, files confirmed events, lists them with delete. Classifier events will show up there
+  as unconfirmed with confirm / dismiss buttons, dismissed ones stay in `events.jsonl` as
+  labelled false positives.
+- `events.py` the shared event store, `find_events.py` the finder and clip logic, `puppy` a
+  Mac wrapper for the CLI versions.
 - `train.py` phase 2 trainer (YOLOv8n-cls fine-tune on the sorted crops and clipped positives).
 - `notify.py` ntfy.sh push with the snapshot attached.
-- `puppy-detector.service`, `sync.sh` deploy. `config.example` documents every knob.
+- `puppy-*.service`, `puppy-prune.timer`, `sync.sh` deploy. `config.example` documents every knob.
 
 Pi side: `/opt/puppy-detector/` holds the code, a venv with `ultralytics` and
 `opencv-python-headless`, `config.env` (the RTSP URL with credentials, not in git) and the
@@ -47,7 +56,7 @@ downloaded weights.
     ssh homepi 'cd /opt/puppy-detector && venv/bin/python detector.py probe'   # one frame, timing
 
 Self-checks: `python3 detector.py selftest` (needs numpy, e.g. `uv run --with numpy ...`),
-`python3 train.py selftest`, `python3 find_events.py selftest`.
+`python3 train.py selftest`, `python3 find_events.py selftest`, `python3 web.py selftest`.
 
 The Pi needs the CPU-only torch wheel. Plain `pip install ultralytics` pulls the aarch64 CUDA
 build, which SIGILLs on the Pi 4's Cortex-A72. After creating the venv:
@@ -62,7 +71,11 @@ being caught and the crops look usable.
 
 ## Finding an accident after the fact
 
-You find the mess an hour later and want the moment. From the Mac:
+You find the mess an hour later and want the moment. On the phone: <http://homepi.local:8080>,
+tap "Last 2 h" (or set a window), look at the contact sheets, tap "This one", then poop or pee.
+"None of these" doubles the window. The event shows in the list below with a Delete to undo.
+
+The same thing from the Mac terminal:
 
     ./puppy find --since "3 hours ago"               # or --since 13:00 --until 14:30
     ./puppy clip 2026-11-03_143012                   # id from the table, --pad 10 default
@@ -99,6 +112,7 @@ the same topic in the ntfy app on the phone. Test with:
 
     ssh homepi 'cd /opt/puppy-detector && set -a && . ./config.env && venv/bin/python notify.py /tmp/probe.jpg'
 
-Every event appends to `puppycam/events.csv` and saves the frame to `puppycam/events/`.
+Every classifier event appends to `puppycam/events.jsonl` as unconfirmed, saves the frame to
+`puppycam/events/` and shows on the web page with confirm / dismiss buttons.
 Pushover instead: swap the `push()` body in `notify.py` for a POST to
 `api.pushover.net/1/messages.json` with the image as `attachment`.

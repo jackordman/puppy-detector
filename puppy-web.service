@@ -1,0 +1,15 @@
+[Unit]
+Description=Puppy cam web page (report an accident, confirm candidates)
+After=network-online.target srv-nas.mount
+Wants=network-online.target
+
+[Service]
+User=jack
+WorkingDirectory=/opt/puppy-detector
+EnvironmentFile=/opt/puppy-detector/config.env
+ExecStart=/opt/puppy-detector/venv/bin/python /opt/puppy-detector/web.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

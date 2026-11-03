@@ -127,35 +127,34 @@ def contact_sheet(run, dst, n=6):
     return True
 
 
-def cmd_find(a):
+def find(since, until=None, radius=80, min_seconds=4, top=15):
+    """Candidates in the window as dicts: id, start, secs, centre, sheet (path relative to OUT or None)."""
     now = datetime.now()
-    start, end = parse_time(a.since, now), parse_time(a.until, now) if a.until else now
-    rows = load_detections(OUT, start, end)
-    runs = find_runs(rows, a.radius, a.min_seconds)[: a.top]
-    print(f"{len(rows)} detections {start:%m-%d %H:%M} .. {end:%m-%d %H:%M}, {len(runs)} candidates\n")
-    print(f"{'id':20} {'secs':>5} {'centre':>12}  sheet")
-    for run in runs:
+    start, end = parse_time(since, now), parse_time(until, now) if until else now
+    out = []
+    for run in find_runs(load_detections(OUT, start, end), radius, min_seconds)[:top]:
         secs = (run[-1][0] - run[0][0]).total_seconds()
         cx = sum((r[1] + r[3]) / 2 for r in run) / len(run)
         cy = sum((r[2] + r[4]) / 2 for r in run) / len(run)
         sheet = OUT / "candidates" / f"{run_id(run)}_{secs:.0f}s.jpg"
-        ok = contact_sheet(run, sheet)
-        print(f"{run_id(run):20} {secs:5.0f} {cx:6.0f},{cy:5.0f}  {sheet.name if ok else '(no recording for this time)'}")
-    if runs:
-        print(f"\nsheets in {OUT / 'candidates'}. Then: find_events.py clip <id>")
+        ok = sheet.exists() or contact_sheet(run, sheet)
+        out.append({"id": run_id(run), "start": run[0][0].isoformat(timespec="seconds"), "secs": round(secs),
+                    "centre": [round(cx), round(cy)], "sheet": str(sheet.relative_to(OUT)) if ok else None})
+    return out
 
 
-def cmd_clip(a):
-    t0 = datetime.strptime(a.id, "%Y-%m-%d_%H%M%S")
+def clip(id, pad=10, radius=80):
+    """Cut the run starting at id (+pad s each side) into positives/<id>.mp4, save its dog crops. Returns (clip, n_crops)."""
+    t0 = datetime.strptime(id, "%Y-%m-%d_%H%M%S")
     rows = load_detections(OUT, t0 - timedelta(seconds=1), t0 + timedelta(hours=1))
-    run = next((r for r in find_runs(rows, a.radius, 0) if run_id(r) == a.id), None)
+    run = next((r for r in find_runs(rows, radius, 0) if run_id(r) == id), None)
     if run is None:
-        sys.exit(f"no run starting at {a.id}; ids come from `find`")
-    start, end = run[0][0] - timedelta(seconds=a.pad), run[-1][0] + timedelta(seconds=a.pad)
+        raise ValueError(f"no run starting at {id}; ids come from `find`")
+    start, end = run[0][0] - timedelta(seconds=pad), run[-1][0] + timedelta(seconds=pad)
     segs = [s for s in sorted(REC.glob("20*.mkv")) if seg_start(s) <= end and seg_start(s) + timedelta(seconds=SEG_SECONDS) >= start]
     if not segs:
-        sys.exit("no recording covers that window")
-    dst = OUT / "positives" / f"{a.id}.mp4"
+        raise ValueError("no recording covers that window")
+    dst = OUT / "positives" / f"{id}.mp4"
     dst.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as lst:
         lst.writelines(f"file '{s}'\n" for s in segs)
@@ -163,9 +162,24 @@ def cmd_clip(a):
     subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst.name,
                     "-ss", f"{max(0, off):.2f}", "-t", f"{(end - start).total_seconds():.2f}", "-c", "copy", "-y", str(dst)], check=True)
     os.unlink(lst.name)
-    print("clip:", dst)
-    n = save_crops(dst, OUT / "positives" / a.id)
-    print(f"{n} crops in {OUT / 'positives' / a.id}  (train.py picks these up)")
+    return dst, save_crops(dst, OUT / "positives" / id)
+
+
+def cmd_find(a):
+    cands = find(a.since, a.until, a.radius, a.min_seconds, a.top)
+    print(f"{len(cands)} candidates\n{'id':20} {'secs':>5} {'centre':>12}  sheet")
+    for c in cands:
+        print(f"{c['id']:20} {c['secs']:5} {c['centre'][0]:6},{c['centre'][1]:5}  {c['sheet'] or '(no recording for this time)'}")
+    if cands:
+        print(f"\nsheets in {OUT / 'candidates'}. Then: find_events.py clip <id>")
+
+
+def cmd_clip(a):
+    try:
+        dst, n = clip(a.id, a.pad, a.radius)
+    except ValueError as e:
+        sys.exit(str(e))
+    print(f"clip: {dst}\n{n} crops in {dst.with_suffix('')}  (train.py picks these up)")
 
 
 def save_crops(video, dst, every=7):
