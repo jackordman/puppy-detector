@@ -22,7 +22,9 @@ PORT = int(os.environ.get("PORT", "8080"))
 LOCK = threading.Lock()  # ponytail: one clip at a time, the Pi has one YOLO to spare
 
 PAGE = """<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>Puppy cam</title><style>
+<title>Puppy cam</title><link rel=manifest href=/manifest.json><link rel=apple-touch-icon href=/icon.png>
+<meta name=apple-mobile-web-app-capable content=yes><meta name=apple-mobile-web-app-status-bar-style content=black><meta name=theme-color content=#111111>
+<style>
 body{font:18px/1.4 system-ui,sans-serif;margin:0;padding:12px;background:#111;color:#eee;max-width:720px;margin:auto}
 h2{margin:18px 0 8px;font-size:20px;color:#aaa}
 button{font:inherit;padding:14px 18px;margin:4px 4px 4px 0;border:0;border-radius:10px;background:#333;color:#eee}
@@ -126,6 +128,9 @@ class H(BaseHTTPRequestHandler):
         try:
             if u.path == "/":
                 self.send(200, PAGE.encode(), "text/html; charset=utf-8")
+            elif u.path in ("/manifest.json", "/icon.png"):
+                p = Path(__file__).with_name(u.path[1:])
+                self.send(200, p.read_bytes(), "application/manifest+json" if p.suffix == ".json" else "image/png")
             elif u.path == "/api/find":
                 self.send(200, api_find(parse_qs(u.query)))
             elif u.path == "/api/events":
@@ -177,6 +182,7 @@ def selftest():
                 return json.loads(e.read())
         get, post = call, call
         assert b"Found one" in urllib.request.urlopen(base + "/").read()
+        assert "icons" in get("/manifest.json")
         assert get("/api/find?since=1%20hours%20ago") == []
         assert get("/api/events") == []
         events.append(id="x", time="2026-11-03T12:00:00", source="classifier", thumb="events/x.jpg")
