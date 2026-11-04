@@ -63,6 +63,10 @@ The camera's TLS stream stalls silently every few hours (connection stays open, 
 Both ffmpeg calls carry `-timeout 15000000` (15 s socket timeout) so they exit and get
 restarted, and the detector reconnects on its own after 60 s without a frame.
 
+Changed the detector config and want the finder to work on older recordings? `backfill.py`
+reruns detection over the recordings on the Mac (about 25 s per 10 minute segment) and merges
+the rows into the Pi's log, see its docstring.
+
 Self-checks: `python3 detector.py selftest` (needs numpy, e.g. `uv run --with numpy ...`),
 `python3 train.py selftest`, `python3 find_events.py selftest`, `python3 web.py selftest`.
 
