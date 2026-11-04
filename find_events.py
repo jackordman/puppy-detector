@@ -25,7 +25,7 @@ from pathlib import Path
 OUT = Path(os.environ.get("OUT_DIR", "/srv/nas/share/puppycam"))
 REC = OUT / "recordings"
 SEG_SECONDS = 600
-GAP = 2.5  # seconds without a detection that ends a run (detector runs at 2 fps)
+GAP = 5.0  # seconds without a detection that ends a run (detector manages 0.5 to 1.5 fps)
 
 
 def parse_time(s, now=None):
@@ -54,12 +54,13 @@ def load_detections(root, start, end):
     return rows
 
 
-def find_runs(rows, radius, min_seconds):
-    """Group consecutive detections whose bbox centre stays within radius px of the run's mean centre."""
+def find_runs(rows, radius, min_seconds, max_seconds=600):
+    """Group consecutive detections whose bbox centre stays within radius px of the run's mean centre.
+    Runs longer than max_seconds are naps, not squats, and are dropped. Newest first."""
     runs, cur = [], []
 
     def flush():
-        if len(cur) >= 3 and (cur[-1][0] - cur[0][0]).total_seconds() >= min_seconds:
+        if len(cur) >= 3 and min_seconds <= (cur[-1][0] - cur[0][0]).total_seconds() <= max_seconds:
             runs.append(list(cur))
         cur.clear()
 
@@ -72,7 +73,7 @@ def find_runs(rows, radius, min_seconds):
         n = len(cur)
         cx, cy = cx + (x - cx) / n, cy + (y - cy) / n
     flush()
-    runs.sort(key=lambda run: (run[-1][0] - run[0][0]), reverse=True)
+    runs.sort(key=lambda run: run[0][0], reverse=True)
     return runs
 
 
@@ -127,7 +128,7 @@ def contact_sheet(run, dst, n=6):
     return True
 
 
-def find(since, until=None, radius=80, min_seconds=4, top=15):
+def find(since, until=None, radius=80, min_seconds=4, top=20):
     """Candidates in the window as dicts: id, start, secs, centre, sheet (path relative to OUT or None)."""
     now = datetime.now()
     start, end = parse_time(since, now), parse_time(until, now) if until else now
@@ -186,7 +187,7 @@ def save_crops(video, dst, every=7):
     import cv2
     from ultralytics import YOLO
     import detector
-    det = YOLO(str(Path(__file__).with_name("yolov8n.pt")))
+    det = YOLO(str(Path(__file__).with_name(detector.MODEL)))
     cap, i, n = cv2.VideoCapture(str(video)), 0, 0
     dst.mkdir(parents=True, exist_ok=True)
     while True:
@@ -196,7 +197,7 @@ def save_crops(video, dst, every=7):
         i += 1
         if i % every:
             continue
-        r = det(frame, imgsz=detector.IMGSZ, classes=[detector.DOG], conf=detector.CONF, verbose=False)[0]
+        r = det(frame, imgsz=detector.IMGSZ, classes=detector.CLASSES, conf=detector.CONF, verbose=False)[0]
         box, _ = detector.pick_dog(r.boxes.xyxy.tolist(), r.boxes.cls.tolist(), r.boxes.conf.tolist())
         if box:
             n += 1
@@ -215,10 +216,13 @@ def selftest():
     walk = [(t(20 + s * 0.5), 100 + s * 60, 100, 200 + s * 60, 200, 0.9) for s in range(12)]  # moving
     short = [(t(60 + s * 0.5), 500, 500, 600, 600, 0.9) for s in range(4)]       # 1.5 s only
     gap = [(t(100 + s * 0.5), 300, 300, 400, 400, 0.9) for s in range(6)] + [(t(110 + s * 0.5), 300, 300, 400, 400, 0.9) for s in range(6)]
+    nap = [(t(1000 + s), 700, 700, 800, 800, 0.9) for s in range(0, 1200, 1)]        # 20 min nap
     runs = find_runs(still + walk + short + gap, radius=80, min_seconds=4)
     assert [run_id(r) for r in runs] == ["2026-11-03_120000"], [run_id(r) for r in runs]
+    assert find_runs(nap, radius=80, min_seconds=4) == [], "naps are dropped"
     runs = find_runs(gap, radius=80, min_seconds=2)
-    assert len(runs) == 2, "a 4 s gap splits the run"
+    assert len(runs) == 2, "a 7.5 s gap splits the run"
+    assert [run_id(r) for r in find_runs(still + gap, radius=80, min_seconds=2)][0] == "2026-11-03_120150", "newest first"
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
         (root / "detections").mkdir()
@@ -236,7 +240,7 @@ if __name__ == "__main__":
     f.add_argument("--until")
     f.add_argument("--min-seconds", type=float, default=4)
     f.add_argument("--radius", type=float, default=80)
-    f.add_argument("--top", type=int, default=15)
+    f.add_argument("--top", type=int, default=20)
     c = sub.add_parser("clip")
     c.add_argument("id")
     c.add_argument("--pad", type=float, default=10)

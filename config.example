@@ -2,8 +2,11 @@
 RTSP_URL="rtsps://USER:PASS@192.168.2.140:322/stream0"
 OUT_DIR=/srv/nas/share/puppycam
 FPS=2
+MODEL=yolov8n.pt
 IMGSZ=416
 CONF=0.4
+# COCO class ids treated as the dog (16 dog, 15 cat, 21 bear, 77 teddy bear)
+CLASSES=16
 MAX_GB=20
 # phase 2/3, harmless until squat.pt exists / topic set
 CLASSIFIER=/opt/puppy-detector/squat.pt

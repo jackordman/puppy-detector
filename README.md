@@ -28,8 +28,10 @@ oldest-segment-first above `MAX_REC_GB` (250 GB, about two weeks). Everything el
 
 ## Layout
 
-- `detector.py` the service. ffmpeg pulls the RTSPS stream at 2 fps, YOLOv8n (CPU, 416 px)
-  finds the dog, OpenCV writes the JPEGs. Loads `squat.pt` if present and fires an event after
+- `detector.py` the service. ffmpeg pulls the RTSPS stream at 2 fps, YOLO11s (CPU, 416 px,
+  about 1.4 s per frame so roughly 0.7 fps, newest frame wins) finds the dog, OpenCV writes
+  the JPEGs. YOLOv8n was 3x faster but blind to a curled-up dog from this ceiling angle
+  (3 of 30 frames vs 30 of 30), and cat counts as dog because the small model confuses them. Loads `squat.pt` if present and fires an event after
   3 consecutive positive frames, 2 min cooldown.
 - `puppy-recorder.service` ffmpeg copying the h264 stream into 10 minute `.mkv` segments, no
   re-encode, no audio. Its own unit so it and the detector cannot take each other down.
@@ -97,7 +99,8 @@ crops from it to `puppycam/positives/<id>/`. Those crops are the training positi
 1. Collect positives with `puppy clip` (above). For more, or for events you saw live, move
    crops from `puppycam/crops/<day>/` into `puppycam/label/squat/`. Aim for 50+ positives.
    Negatives are sampled from the remaining crops automatically; drop hard negatives
-   (sitting, sniffing) into `puppycam/label/other/` if the classifier confuses them.
+   (sitting, sniffing) into `puppycam/label/other/` if the classifier confuses them. There are two dogs in the room and
+   the detector logs both. Only put the right dog's squats in positives.
 2. Train on the Pi (ultralytics is already there, 20 epochs at 224 px takes a while on a Pi 4,
    run it in tmux):
 

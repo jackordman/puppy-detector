@@ -32,7 +32,9 @@ CLASSIFIER = Path(os.environ.get("CLASSIFIER", "/opt/puppy-detector/squat.pt"))
 SQUAT_CONF = float(os.environ.get("SQUAT_CONF", "0.6"))
 CONSECUTIVE = int(os.environ.get("CONSECUTIVE", "3"))
 EVENT_COOLDOWN = float(os.environ.get("EVENT_COOLDOWN", "120"))
+MODEL = os.environ.get("MODEL", "yolov8n.pt")
 DOG = 16  # COCO class id
+CLASSES = [int(c) for c in os.environ.get("CLASSES", "16").split(",")]  # COCO ids counted as "the dog"
 
 
 def log(*a):
@@ -94,7 +96,7 @@ def pick_dog(boxes, cls, conf):
     """Largest dog box as ((x1, y1, x2, y2), score), or (None, 0)."""
     best, score, area = None, 0.0, 0
     for b, c, s in zip(boxes, cls, conf):
-        if int(c) != DOG or s < CONF:
+        if int(c) not in CLASSES or s < CONF:
             continue
         x1, y1, x2, y2 = (int(v) for v in b)
         if (x2 - x1) * (y2 - y1) > area:
@@ -150,14 +152,14 @@ def run():
     import events
     import notify
 
-    det = YOLO("yolov8n.pt")
+    det = YOLO(MODEL)
     cls = YOLO(str(CLASSIFIER)) if CLASSIFIER.exists() else None
-    log("classifier:", CLASSIFIER if cls else "none (phase 1, collecting only)")
+    log(f"detector {MODEL} imgsz {IMGSZ} conf {CONF} classes {CLASSES}; classifier:", CLASSIFIER if cls else "none (phase 1, collecting only)")
     streak = Streak(CONSECUTIVE, EVENT_COOLDOWN)
     last_save = last_prune = 0.0
     for frame in frames(RTSP_URL):
         now = time.time()
-        r = det(frame, imgsz=IMGSZ, classes=[DOG], conf=CONF, verbose=False)[0]
+        r = det(frame, imgsz=IMGSZ, classes=CLASSES, conf=CONF, verbose=False)[0]
         box, score = pick_dog(r.boxes.xyxy.tolist(), r.boxes.cls.tolist(), r.boxes.conf.tolist())
         if box is None:
             streak.update(False, now)
@@ -195,12 +197,12 @@ def run():
 def probe():
     import cv2
     from ultralytics import YOLO
-    det = YOLO("yolov8n.pt")
+    det = YOLO(MODEL)
     gen = frames(RTSP_URL)
     frame = next(gen)
     gen.close()
     t = time.time()
-    r = det(frame, imgsz=IMGSZ, classes=[DOG], conf=CONF, verbose=False)[0]
+    r = det(frame, imgsz=IMGSZ, classes=CLASSES, conf=CONF, verbose=False)[0]
     log(f"frame {frame.shape[1]}x{frame.shape[0]}, {len(r.boxes)} dog(s), {1000*(time.time()-t):.0f} ms")
     cv2.imwrite("/tmp/probe.jpg", r.plot())
     log("saved /tmp/probe.jpg")
