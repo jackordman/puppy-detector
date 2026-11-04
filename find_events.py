@@ -93,20 +93,23 @@ def segment_for(t):
     return None
 
 
-def frame_at(t, out_jpg, width=480):
+def frame_at(t, out_jpg):
     seg = segment_for(t)
     if seg is None:
         return False
     off = (t - seg_start(seg)).total_seconds()
     r = subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-ss", f"{off:.2f}", "-i", str(seg),
-                        "-frames:v", "1", "-vf", f"scale={width}:-2", "-y", str(out_jpg)], capture_output=True)
+                        "-frames:v", "1", "-y", str(out_jpg)], capture_output=True)
     return r.returncode == 0 and Path(out_jpg).exists()
 
 
-def contact_sheet(run, dst, n=6):
+def contact_sheet(run, dst, n=6, win=(640, 480)):
+    """Six frames across the run, each cropped to a win-sized window around the run's centre."""
     import cv2
     import numpy as np
     t0, t1 = run[0][0], run[-1][0]
+    cx = sum((r[1] + r[3]) / 2 for r in run) / len(run)
+    cy = sum((r[2] + r[4]) / 2 for r in run) / len(run)
     tiles = []
     with tempfile.TemporaryDirectory() as td:
         for i in range(n):
@@ -114,7 +117,11 @@ def contact_sheet(run, dst, n=6):
             p = Path(td) / f"{i}.jpg"
             if frame_at(t, p):
                 img = cv2.imread(str(p))
-                cv2.putText(img, t.strftime("%H:%M:%S"), (8, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                h, w = img.shape[:2]
+                x0 = int(min(max(0, cx - win[0] / 2), max(0, w - win[0])))
+                y0 = int(min(max(0, cy - win[1] / 2), max(0, h - win[1])))
+                img = img[y0:y0 + win[1], x0:x0 + win[0]]
+                cv2.putText(img, t.strftime("%H:%M:%S"), (8, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
                 tiles.append(img)
     if not tiles:
         return False
