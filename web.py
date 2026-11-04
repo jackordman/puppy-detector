@@ -47,7 +47,7 @@ const api=(p,b)=>fetch(p,b?{method:'POST',headers:{'Content-Type':'application/j
 let lastSince='1 hours ago';
 async function find(since,until){ if(!since)return; lastSince=since; $('status').textContent='Searching...'; $('cands').innerHTML='';
   const c=await api('/api/find?since='+encodeURIComponent(since)+(until?'&until='+encodeURIComponent(until):''));
-  $('status').textContent=c.error||(c.length?'Tap the one that is it':'Nothing in that window, try wider');
+  $('status').textContent=c.error||(c.length>=20?'Newest 20 shown, narrow the window for earlier ones':c.length?'Tap the one that is it':'Nothing in that window, try wider');
   $('cands').innerHTML=c.map(x=>`<div class=card>${x.sheet?`<img src="/files/${x.sheet}">`:'<div class=muted>no recording for this time</div>'}
     <div class=row><div style="flex:1"><b>${x.start.slice(11,19)}</b> <span class=muted>${x.secs}s still</span></div>
     <button class=primary onclick="pick('${x.id}')">This one</button></div></div>`).join('')
