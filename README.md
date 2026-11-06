@@ -2,11 +2,10 @@
 
 Watches the Wyze Cam v3 from the Raspberry Pi `homepi`, saves a crop whenever a dog is in
 frame, records a two week ring buffer, and (once trained) pushes a notification when the dog
-squats to poop or lifts a leg. No sound, no siren, ever. Output is a push to Jack's phone plus
+squats to poop or lifts a leg. No sound, no siren, ever. Output is a push to the phone plus
 an event row and snapshot.
 
-**Found a mess? Open <http://homepi.local:8080> on the phone** (also over Tailscale at
-<http://100.127.34.3:8080>). Pick a window, tap the candidate that is it, answer poop or pee.
+**Found a mess? Open <http://homepi.local:8080> on the phone.** Pick a window, tap the candidate that is it, answer poop or pee.
 Share > Add to Home Screen in Safari gives it an icon and a full-screen app look. Push to the
 phone stays with the ntfy app (web push would need HTTPS, a service worker and a push server).
 

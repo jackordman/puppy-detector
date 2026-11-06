@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 2: train the squat classifier from crops Jack sorted on the share.
+"""Phase 2: train the squat classifier from crops sorted by hand on the share.
 
 Positives: OUT_DIR/positives/*/*.jpg (from `puppy clip`) plus OUT_DIR/label/squat/*.jpg (sorted by hand).
 Negatives: OUT_DIR/label/other/*.jpg if any, else a random sample of OUT_DIR/crops/.
