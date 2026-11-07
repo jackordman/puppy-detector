@@ -1,7 +1,6 @@
 # Copy to config.local (gitignored). sync.sh ships it to the Pi as /opt/puppy-detector/config.env.
 RTSP_URL="rtsps://USER:PASS@CAMERA_IP:322/stream0"
 OUT_DIR=/srv/nas/share/puppycam
-FPS=2
 MODEL=yolov8n.pt
 IMGSZ=416
 CONF=0.4

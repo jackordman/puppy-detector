@@ -25,7 +25,7 @@ from pathlib import Path
 OUT = Path(os.environ.get("OUT_DIR", "/srv/nas/share/puppycam"))
 REC = OUT / "recordings"
 SEG_SECONDS = 600
-GAP = 5.0  # seconds without a detection that ends a run (detector manages 0.5 to 1.5 fps)
+GAP = 7.0  # seconds without a detection that ends a run, rides out two missed frames at 0.5 fps
 
 
 def parse_time(s, now=None):
