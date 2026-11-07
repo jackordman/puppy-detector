@@ -11,6 +11,7 @@ Config comes from the environment (systemd EnvironmentFile), see config.example.
 import csv
 import os
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -24,7 +25,6 @@ import numpy as np
 
 RTSP_URL = os.environ.get("RTSP_URL", "")
 OUT = Path(os.environ.get("OUT_DIR", "/srv/nas/share/puppycam"))
-FPS = float(os.environ.get("FPS", "2"))
 IMGSZ = int(os.environ.get("IMGSZ", "416"))
 CONF = float(os.environ.get("CONF", "0.4"))
 MAX_GB = float(os.environ.get("MAX_GB", "20"))
@@ -41,29 +41,56 @@ def log(*a):
     print(datetime.now().strftime("%H:%M:%S"), *a, flush=True)
 
 
+def redact(s):
+    return re.sub(r"//[^/@\s]*@", "//***@", s)
+
+
 # ---------- frames ----------
 
-def stream_size(url):
-    out = subprocess.check_output(
-        ["ffprobe", "-v", "error", "-rtsp_transport", "tcp", "-timeout", "15000000", "-select_streams", "v:0",
-         "-show_entries", "stream=width,height", "-of", "csv=p=0", url], timeout=30)
-    w, h = out.decode().strip().split(",")[:2]
+# Opens the camera through an ffconcat file so the credentials never appear on an ffmpeg command line.
+CAMERA_IN = ["-f", "concat", "-safe", "0", "-protocol_whitelist", "file,rtsp,rtsps,tls,tcp,udp,rtp", "-i"]
+
+
+def camera_file(url):
+    fd, path = tempfile.mkstemp(suffix=".ffconcat")
+    with os.fdopen(fd, "w") as f:
+        f.write("ffconcat version 1.0\nfile '" + url.replace("'", "'\\''") + "'\n"
+                "option rtsp_transport tcp\noption timeout 15000000\n")
+    return path
+
+
+def stream_size(src):
+    r = subprocess.run(
+        ["ffprobe", "-v", "error", *CAMERA_IN, src, "-select_streams", "v:0",
+         "-show_entries", "stream=width,height", "-of", "csv=p=0"], capture_output=True, timeout=30)
+    if r.returncode:
+        raise RuntimeError(r.stderr.decode().strip() or f"ffprobe exit {r.returncode}")
+    w, h = r.stdout.decode().strip().split(",")[:2]
     return int(w), int(h)
 
 
 def frames(url):
     """Yield the newest BGR frame, dropping any the detector was too slow for, reconnecting when the stream drops."""
+    src = camera_file(url)
+    try:
+        yield from _frames(src)
+    finally:
+        os.unlink(src)
+
+
+def _frames(src):
     while True:
         try:
-            w, h = stream_size(url)
+            w, h = stream_size(src)
         except Exception as e:  # noqa: BLE001
-            log("probe failed:", e)
+            log("probe failed:", redact(str(e)))
             time.sleep(10)
             continue
         n = w * h * 3
+        # Keyframes only, one every 2 s on the Wyze. Skips decoding the other 29 of 30 frames.
         p = subprocess.Popen(
-            ["ffmpeg", "-nostdin", "-loglevel", "error", "-rtsp_transport", "tcp", "-timeout", "15000000", "-i", url,
-             "-vf", f"fps={FPS}", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"],
+            ["ffmpeg", "-nostdin", "-loglevel", "error", "-skip_frame", "nokey", *CAMERA_IN, src,
+             "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"],
             stdout=subprocess.PIPE, bufsize=n)
         latest = queue.Queue(maxsize=1)
 
@@ -78,7 +105,7 @@ def frames(url):
             latest.put(None)
 
         threading.Thread(target=drain, daemon=True).start()
-        log(f"stream {w}x{h} @ {FPS} fps")
+        log(f"stream {w}x{h}, keyframes only")
         try:
             while (frame := latest.get(timeout=60)) is not None:
                 yield frame
@@ -210,6 +237,11 @@ def probe():
 
 def selftest():
     f = np.zeros((100, 200, 3), np.uint8)
+    assert redact("rtsps://u:p^w!d@10.0.0.1:322/s0: unreachable") == "rtsps://***@10.0.0.1:322/s0: unreachable"
+    cf = camera_file("rtsps://u:it's@h/s0")
+    assert oct(os.stat(cf).st_mode & 0o777) == "0o600"
+    assert "file 'rtsps://u:it'\\''s@h/s0'" in Path(cf).read_text()
+    os.unlink(cf)
     assert pick_dog([[0, 0, 10, 10], [0, 0, 50, 50], [0, 0, 90, 90]], [DOG, DOG, 0], [0.9, 0.8, 0.9]) == ((0, 0, 50, 50), 0.8)
     assert pick_dog([[0, 0, 50, 50]], [DOG], [CONF - 0.1]) == (None, 0.0)
     assert crop(f, (190, 90, 200, 100)).shape == (11, 11, 3)

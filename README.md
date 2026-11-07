@@ -27,8 +27,8 @@ oldest-segment-first above `MAX_REC_GB` (250 GB, about two weeks). Everything el
 
 ## Layout
 
-- `detector.py` the service. ffmpeg pulls the RTSPS stream at 2 fps, YOLO11s (CPU, 416 px,
-  about 1.4 s per frame so roughly 0.7 fps, newest frame wins) finds the dog, OpenCV writes
+- `detector.py` the service. ffmpeg decodes only the keyframes of the RTSPS stream (one every
+  2 s), YOLO11s (CPU, 416 px, about 1.4 s per frame) finds the dog, OpenCV writes
   the JPEGs. YOLOv8n was 3x faster but blind to a curled-up dog from this ceiling angle
   (3 of 30 frames vs 30 of 30), and cat counts as dog because the small model confuses them. Loads `squat.pt` if present and fires an event after
   3 consecutive positive frames, 2 min cooldown.
@@ -59,8 +59,8 @@ downloaded weights.
     ssh homepi 'cd /opt/puppy-detector && venv/bin/python detector.py probe'   # one frame, timing
 
 The camera's TLS stream stalls silently every few hours (connection stays open, no data).
-Both ffmpeg calls carry `-timeout 15000000` (15 s socket timeout) so they exit and get
-restarted, and the detector reconnects on its own after 60 s without a frame.
+Both ffmpeg inputs carry a 15 s socket timeout (in the ffconcat file that names the stream,
+which keeps the credentials off the command line) so they exit and get restarted, and the detector reconnects on its own after 60 s without a frame.
 
 Changed the detector config and want the finder to work on older recordings? `backfill.py`
 reruns detection over the recordings on the Mac (about 25 s per 10 minute segment) and merges

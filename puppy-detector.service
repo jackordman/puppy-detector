@@ -4,6 +4,8 @@ After=network-online.target srv-nas.mount
 Wants=network-online.target
 
 [Service]
+# ffmpeg echoes the stream URL, credentials included, in its errors
+LogFilterPatterns=~rtsps?://[^/@ ]*@
 User=jack
 WorkingDirectory=/opt/puppy-detector
 EnvironmentFile=/opt/puppy-detector/config.env
@@ -11,6 +13,7 @@ ExecStart=/opt/puppy-detector/venv/bin/python /opt/puppy-detector/detector.py
 Restart=always
 RestartSec=10
 Nice=10
+PrivateTmp=yes
 
 [Install]
 WantedBy=multi-user.target

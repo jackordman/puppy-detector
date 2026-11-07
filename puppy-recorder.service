@@ -4,10 +4,17 @@ After=network-online.target srv-nas.mount
 Wants=network-online.target
 
 [Service]
+# ffmpeg echoes the stream URL, credentials included, in its errors
+LogFilterPatterns=~rtsps?://[^/@ ]*@
 User=jack
 EnvironmentFile=/opt/puppy-detector/config.env
+RuntimeDirectory=puppy-recorder
+RuntimeDirectoryMode=0700
 ExecStartPre=/bin/mkdir -p ${OUT_DIR}/recordings
-ExecStart=/usr/bin/ffmpeg -nostdin -loglevel warning -rtsp_transport tcp -timeout 15000000 -i ${RTSP_URL} -an -c:v copy -f segment -segment_time 600 -segment_atclocktime 1 -reset_timestamps 1 -strftime 1 ${OUT_DIR}/recordings/%%Y-%%m-%%d_%%H%%M%%S.mkv
+# The camera URL goes in an ffconcat file so the credentials stay off the ffmpeg command line.
+# ponytail: URL is written unquoted, breaks on a password with a space, quote or backslash
+ExecStartPre=/bin/sh -c 'umask 077; printf "ffconcat version 1.0\\nfile %%s\\noption rtsp_transport tcp\\noption timeout 15000000\\n" "$$RTSP_URL" > %t/puppy-recorder/cam.ffconcat'
+ExecStart=/usr/bin/ffmpeg -nostdin -loglevel warning -f concat -safe 0 -protocol_whitelist file,rtsp,rtsps,tls,tcp,udp,rtp -i %t/puppy-recorder/cam.ffconcat -an -c:v copy -f segment -segment_time 600 -segment_atclocktime 1 -reset_timestamps 1 -strftime 1 ${OUT_DIR}/recordings/%%Y-%%m-%%d_%%H%%M%%S.mkv
 Restart=always
 RestartSec=5
 

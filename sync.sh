@@ -5,5 +5,5 @@ set -euo pipefail
 cd "$(dirname "$0")"
 host=${1:-homepi}
 rsync -az *.py *.sh *.json icon.png puppy-*.service puppy-*.timer "$host:/opt/puppy-detector/"
-[ -f config.local ] && rsync -az config.local "$host:/opt/puppy-detector/config.env"
+[ -f config.local ] && rsync -az --chmod=F600 config.local "$host:/opt/puppy-detector/config.env"
 ssh "$host" 'cd /opt/puppy-detector && sudo install -m644 puppy-*.service puppy-*.timer /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now puppy-detector puppy-recorder puppy-web puppy-prune.timer && sudo systemctl restart puppy-detector puppy-recorder puppy-web && sleep 4 && systemctl --no-pager --lines=5 status puppy-detector puppy-recorder puppy-web puppy-prune.timer'
